@@ -1,0 +1,251 @@
+---
+title: "Preliminary Text Analysis"
+author: "Gabriele Gelsomini"
+date: "12/8/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Source and sampling
+
+This project rely on text analysis. First step is to load in 3 **.txt** files related to blogs, news and twitter.
+Since the files are quite large in size, I decided to sample them using just 10% of their information.
+
+```{r read_in, eval=FALSE, echo=TRUE}
+#1. READ DATA------------------------------------
+#set path in
+path_in <- "C:/Users/Gab/DataScience/Capstone/en_US"
+path_fun <- "C:/Users/Gab/DataScience/Capstone/R"
+
+#read blogs file
+con <- file(file.path(path_in, "en_US.blogs.txt"), open='r')
+text_blogs <- readLines(con, encoding = "UTF-8")
+close(con)
+
+#read news file
+con <- file(file.path(path_in, "en_US.news.txt"), open='rb') #warning on incomplete finel line, use r binary connection
+text_news <- readLines(con, encoding = "UTF-8")
+close(con)
+
+#read twitter file
+con <- file(file.path(path_in, "en_US.twitter.txt"), open='r')
+text_twitter <- readLines(con, skipNul = TRUE, encoding = "UTF-8")
+close(con)
+
+#2. SAMPLING dataset 10% and SAVE them in disc
+set.seed(1234)
+txt_blogs_sample <- text_blogs[as.logical(rbinom(n = length(text_blogs), size = 1, prob = 0.1))]
+write.table(txt_blogs_sample, file.path(path_in, "sample_en_US.blog.txt"), 
+           row.names = FALSE, col.names = FALSE, quote = FALSE, fileEncoding = "UTF-8")
+set.seed(1234)
+txt_news_sample <- text_news[as.logical(rbinom(n = length(text_news), size = 1, prob = 0.1))]
+write.table(txt_news_sample, file.path(path_in, "sample_en_US.news.txt"), 
+            row.names = FALSE, col.names = FALSE, quote = FALSE, fileEncoding = "UTF-8")
+set.seed(1234)
+txt_twit_sample <- text_twitter[as.logical(rbinom(n = length(text_twitter), size = 1, prob = 0.1))]
+write.table(txt_twit_sample, file.path(path_in, "sample_en_US.twit.txt"), 
+            row.names = FALSE, col.names = FALSE, quote = FALSE, fileEncoding = "UTF-8")
+
+```
+
+## Cleaning data
+The dataset has to be cleaned, removing punctuations and number, tokenizing and then appling a profanity filter to remouve bad words from a list. For that I created 2 function: the first read the 3 sampled files creating a single corpus, the second tokenize and apply a profanity filter.
+
+```{r analyze_datas, eval=TRUE, echo= TRUE, warning=FALSE, message= FALSE, results='hide'}
+#function to read and tokenize
+fn_read_and_corpus <- function(txt_file_paths){
+  require(quanteda);
+  
+  writeLines("Loading data\n---------------")
+  
+  #read  file
+  list_txt <- list()
+  for(i in (1:length(txt_file_paths))){
+      con <- file(txt_file_paths[i], open='rb')
+      text_file_raw <- readLines(con, skipNul = TRUE, encoding = "UTF-8")
+      list_txt[[i]] <- text_file_raw
+      close(con)
+  }
+  
+  #unify text files 
+  text_file_all <- do.call("c", list_txt)
+  
+  #create corpus
+  corp <- corpus(text_file_all)
+  
+  return(corp)
+}
+
+fn_tokenize_and_filter <- function(corpus_in, bad_words_path){
+  
+  #read bad words
+  con <- file(bad_words_path, open='rb')
+  bad_words <- readLines(con, skipNul = TRUE, encoding = "UTF-8")
+  close(con)
+  
+  writeLines("Tokenizing\n---------------")
+  
+  #create tokens
+  tok_corp <- tokens(corpus_in, remove_punct = TRUE, remove_numbers = TRUE, 
+                     remove_symbols = TRUE, remove_twitter = TRUE)
+  #to lower
+  tok_corp <- tokens_tolower(tok_corp)
+  
+  writeLines("Profanity filter\n---------------")
+  
+  #profanity filter
+  tok_corp <- tokens_remove(tok_corp, bad_words)
+  
+}
+path_in <- "C:/Users/Gab/DataScience/Capstone/en_US"
+file_paths <- c(file.path(path_in,"sample_en_US.blog.txt"),
+                file.path(path_in,"sample_en_US.news.txt"),
+                file.path(path_in,"sample_en_US.twit.txt"))
+
+my_corpus <- fn_read_and_corpus(file_paths) #read and generate corpus
+
+my_tokens <- fn_tokenize_and_filter(my_corpus, file.path(path_in,"bad-words.txt")) #tokenize and filt
+
+```
+
+## Preliminary analysis
+Next, I will generate a document term matrix, print a summary df and a word cloud plot for:
+
+### Unigram dataset
+
+```{r tokens_1gram, echo=FALSE, eval=TRUE,warning=FALSE}
+# #remove single and double char words
+# tok_blog_sample <- tokens_select(tok_blog_sample, min_nchar = 3L)
+ 
+#lemmatize to change said in say
+my_token_lem <- tokens_replace(my_tokens, pattern = lexicon::hash_lemmas$token, 
+                                replacement = lexicon::hash_lemmas$lemma)
+my_dfm <- dfm(my_token_lem, remove = stopwords("english"))
+#Print data frame with stats
+textstat_frequency(my_dfm, 10)
+#print first 200 word cloud 
+textplot_wordcloud(my_dfm, max_words = 200)
+```
+
+
+## Preliminary analysis - bigrams
+Build bigrams remuoing stopwords.
+
+### Bigrams dataset
+
+```{r tokens_2gram, echo=FALSE, eval=TRUE,warning=FALSE}
+#remove single  char words
+#tok_blog_sample_2 <- tokens_select(tok_blog_sample, min_nchar = 2L)
+#tok_blog_sample_2 <- tokens_remove(tok_blog_sample_2, stopwords("english"))
+my_token_lem_bigrams <- tokens_ngrams(my_token_lem, n = 2) 
+
+my_dfm_bigrams <- dfm(my_token_lem_bigrams, remove = stopwords("english"))
+#Print data frame with stats
+textstat_frequency(my_dfm_bigrams, 10)
+#print first 200 word cloud 
+textplot_wordcloud(my_dfm_bigrams, max_words = 100)
+```
+
+## Preliminary analysis - trigrams
+Build trigrams remuoing stopwords.
+
+### Trigrams dataset
+
+```{r tokens_3gram, echo=FALSE, eval=TRUE,warning=FALSE}
+#tok_blog_sample <- tokens_remove(tok_blog_sample, stopwords("english"))
+my_token_lem_trigrams <- tokens_ngrams(my_token_lem, n = 3) 
+
+my_dfm_trigrams <- dfm(my_token_lem_trigrams, remove = stopwords("english"))
+#Print data frame with stats
+textstat_frequency(my_dfm_trigrams, 10)
+#print first 200 word cloud 
+textplot_wordcloud(my_dfm_trigrams, max_words = 70)
+```
+
+## Preliminary analysis - tetragrams
+Build tetragrams removing stopwords.
+
+### Tetragrams dataset
+
+```{r tokens_4gram, echo=FALSE, eval=TRUE,warning=FALSE}
+#tok_blog_sample <- tokens_remove(tok_blog_sample, stopwords("english"))
+my_token_lem_tetragrams <- tokens_ngrams(my_token_lem, n = 4) 
+
+my_dfm_tetragrams <- dfm(my_token_lem_tetragrams, remove = stopwords("english"))
+#Print data frame with stats
+textstat_frequency(my_dfm_tetragrams, 10)
+#print first 200 word cloud 
+textplot_wordcloud(my_dfm_tetragrams, max_words = 50)
+```
+
+## Extract frequencies from dfm
+Extract frequencies and remouve previous objects
+
+```{r blog_freq, eval=TRUE, echo= TRUE}
+dfm_freq     <- sort(featfreq(my_dfm), decreasing = TRUE)
+bi_dfm_freq  <- sort(featfreq(my_dfm_bigrams), decreasing = TRUE)
+tri_dfm_freq <- sort(featfreq(my_dfm_trigrams), decreasing = TRUE)
+tet_dfm_freq <- sort(featfreq(my_dfm_tetragrams), decreasing = TRUE)
+
+rm(my_dfm_bigrams, my_dfm_tetragrams, my_dfm, my_dfm_trigrams,
+   my_token_lem, my_token_lem_bigrams, my_token_lem_trigrams, my_token_lem_tetragrams)
+```
+
+## Next Steps
+
+* Build 4 datasets (single words, 2-grams, 3-grams and 4-grams) based on blogs, news and twitter 
+* Build a prediction model based on the previous words in input
+* The model will search recursively in the 4 dataset to find the best next word
+* Think about a solution for cases not included in the databases
+* Build a shiny app
+
+## Build datasets
+
+```{r datasets, eval=FALSE, echo= FALSE}
+
+df_unigrams    <- data.frame(word   = names(dfm_freq),
+                             freq   = dfm_freq)
+rm(dfm_freq)
+
+df_bigrams     <- data.frame(word_1 = sapply(X = strsplit(names(bi_dfm_freq), "_"),
+                                             FUN = function(x) x[1]),
+                             word_2 = sapply(X = strsplit(names(bi_dfm_freq), "_"),
+                                             FUN = function(x) x[2]),
+                             freq = bi_dfm_freq)
+rm(bi_dfm_freq)
+
+df_trigrams    <- data.frame(word_1 = sapply(X = strsplit(names(tri_dfm_freq), "_"),
+                                             FUN = function(x) x[1]),
+                             word_2 = sapply(X = strsplit(names(tri_dfm_freq), "_"),
+                                             FUN = function(x) x[2]),
+                             word_3 = sapply(X = strsplit(names(tri_dfm_freq), "_"),
+                                             FUN = function(x) x[3]),
+                             freq = tri_dfm_freq)
+rm(tri_dfm_freq)
+
+df_tetragrams  <- data.frame(word_1 = sapply(X = strsplit(names(tet_dfm_freq), "_"),
+                                             FUN = function(x) x[1]),
+                             word_2 = sapply(X = strsplit(names(tet_dfm_freq), "_"),
+                                             FUN = function(x) x[2]),
+                             word_3 = sapply(X = strsplit(names(tet_dfm_freq), "_"),
+                                             FUN = function(x) x[3]),
+                             word_4 = sapply(X = strsplit(names(tet_dfm_freq), "_"),
+                                             FUN = function(x) x[4]),
+                             freq = tet_dfm_freq)
+rm(tet_dfm_freq)
+
+
+```
+
+
+```{r save_dfs, eval=FALSE, echo= FALSE}
+
+save(df_unigrams, df_bigrams, df_trigrams, df_tetragrams, file = file.path(getwd(),"dataframes.RData"))
+
+```
+
+
+
